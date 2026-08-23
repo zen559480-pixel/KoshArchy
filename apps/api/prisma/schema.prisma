@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  email         String   @unique
+  passwordHash  String
+  name          String?
+  currency      String   @default("INR")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  accounts      Account[]
+  transactions  Transaction[]
+  categories    Category[]
+  goals         Goal[]
+  budgets       Budget[]
+  recurring     RecurringTransaction[]
+}
+
+model Account {
+  id                String   @id @default(uuid())
+  userId            String
+  name              String
+  type              AccountType // BANK, CREDIT_CARD, CASH, WALLET, INVESTMENT
+  balance           Decimal     @db.Decimal(15, 2) // Current actual balance
+  currency          String      @default("INR")
+  includeInNetWorth Boolean     @default(true)
+  includeInJoint    Boolean     @default(true)
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user              User          @relation(fields: [userId], references: [id])
+  transactions      Transaction[] @relation("AccountTransactions")
+  transfersFrom     Transaction[] @relation("TransferFrom")
+  transfersTo       Transaction[] @relation("TransferTo")
+  goals             Goal[]        @relation("GoalAccount") // Where goal funds are held
+}
+
+model Category {
+  id          String       @id @default(uuid())
+  userId      String
+  name        String
+  type        CategoryType // INCOME, EXPENSE
+  isArchived  Boolean      @default(false)
+  
+  user        User          @relation(fields: [userId], references: [id])
+  transactions Transaction[]
+  budgetItems BudgetItem[]
+}
+
+model Transaction {
+  id              String          @id @default(uuid())
+  userId          String
+  type            TransactionType // INCOME, EXPENSE, TRANSFER
+  amount          Decimal         @db.Decimal(15, 2)
+  date            DateTime
+  description     String?
+  notes           String?
+  
+  // For Income & Expense
+  accountId       String?
+  account         Account?        @relation("AccountTransactions", fields: [accountId], references: [id])
+  categoryId      String?
+  category        Category?       @relation(fields: [categoryId], references: [id])
+
+  // For Transfers (Prevents double counting)
+  fromAccountId   String?
+  fromAccount     Account?        @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccountId     String?
+  toAccount       Account?        @relation("TransferTo", fields: [toAccountId], references: [id])
+
+  // Optional link to goals (if marked as purchased)
+  goalId          String?
+  goal            Goal?           @relation(fields: [goalId], references: [id])
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model Goal {
+  id              String      @id @default(uuid())
+  userId          String
+  name            String
+  targetAmount    Decimal     @db.Decimal(15, 2)
+  savedAmount     Decimal     @db.Decimal(15, 2) @default(0)
+  targetDate      DateTime?
+  status          GoalStatus  // ACTIVE, ACHIEVED, PURCHASED, CANCELLED
+  priority        Priority    // ESSENTIAL, HIGH, MEDIUM, LOW
+  notes           String?
+  
+  // The account where this money is conceptually "reserved"
+  accountId       String?
+  account         Account?    @relation("GoalAccount", fields: [accountId], references: [id])
+
+  user            User          @relation(fields: [userId], references: [id])
+  transactions    Transaction[] // Expenses linked to this goal when purchased
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
+
+model Budget {
+  id          String       @id @default(uuid())
+  userId      String
+  month       Int          // 1-12
+  year        Int          // e.g., 2026
+  
+  items       BudgetItem[]
+  user        User         @relation(fields: [userId], references: [id])
+  
+  @@unique([userId, month, year])
+}
+
+model BudgetItem {
+  id              String   @id @default(uuid())
+  budgetId        String
+  categoryId      String
+  expectedAmount  Decimal  @db.Decimal(15, 2)
+  isFixed         Boolean  @default(false)
+  
+  budget          Budget   @relation(fields: [budgetId], references: [id])
+  category        Category @relation(fields: [categoryId], references: [id])
+}
+
+model RecurringTransaction {
+  id              String          @id @default(uuid())
+  userId          String
+  type            TransactionType
+  amount          Decimal         @db.Decimal(15, 2)
+  description     String
+  frequency       Frequency       // WEEKLY, MONTHLY, YEARLY, etc.
+  startDate       DateTime
+  endDate         DateTime?
+  nextOccurrence  DateTime
+  
+  user            User            @relation(fields: [userId], references: [id])
+}
+
+// --- ENUMS ---
+enum AccountType { BANK, CREDIT_CARD, CASH, WALLET, INVESTMENT, LOAN, OTHER }
+enum TransactionType { INCOME, EXPENSE, TRANSFER }
+enum CategoryType { INCOME, EXPENSE }
+enum GoalStatus { ACTIVE, ACHIEVED, PURCHASED, CANCELLED }
+enum Priority { ESSENTIAL, HIGH, MEDIUM, LOW }
+enum Frequency { ONE_TIME, WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, YEARLY, CUSTOM }
