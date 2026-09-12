@@ -76,12 +76,20 @@ export function isLoggedIn(): boolean {
 }
 
 // ─── Login / Logout ───────────────────────────────────────────────
+const BASE_URL = (import.meta.env.VITE_API_URL ?? '/api').replace(/\/+$/, '');
+
 export async function login(email: string, password: string): Promise<StoredUser> {
-  const res = await fetch('/api/auth/login', {
+  const res = await fetch(`${BASE_URL}/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
+
+  const contentType = res.headers.get('content-type');
+  if (!contentType || !contentType.includes('application/json')) {
+    const text = await res.text();
+    throw new Error(text || `Server returned status ${res.status}`);
+  }
 
   const data = await res.json();
 
