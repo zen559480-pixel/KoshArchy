@@ -51,7 +51,7 @@ The repository includes a `render.yaml` blueprint:
    - **Branch:** `main`
    - **Build Command:**
      ```bash
-     npm install && npx prisma generate && npm run build
+     npm install --include=dev && npx prisma generate && npm run build
      ```
    - **Start Command:**
      ```bash
