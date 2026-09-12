@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+*/node_modules/
+apps/*/node_modules/
+
+# Production build outputs
+dist/
+build/
+apps/*/dist/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+apps/*/.env
+apps/*/.env.local
+apps/*/.env.*.local
+
+# Database
+apps/api/prisma/*.db
+apps/api/prisma/*.db-journal
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# Editor & OS
+.DS_Store
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Testing & coverage
+coverage/
+*.lcov
+
+# Antigravity CLI / agent temp
+.gemini/
+.system_generated/
+scratch/

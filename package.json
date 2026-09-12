@@ -1,0 +1,14 @@
+{
+  "name": "kosharchy-finance-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KoshArchy — Personal Finance Manager (monorepo root)",
+  "scripts": {
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web"
+  },
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ]
+}

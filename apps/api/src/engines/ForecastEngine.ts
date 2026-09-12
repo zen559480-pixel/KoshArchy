@@ -1,97 +1,166 @@
-import { PrismaClient } from '@prisma/client';
+import { RecurringTransaction, Goal } from '@prisma/client';
 import Decimal from 'decimal.js';
-import { addDays, isSameDay, startOfDay } from 'date-fns';
+import { addDays, startOfDay, isSameDay } from 'date-fns';
+import { prisma } from '../lib/prisma';
 import { FluidMoneyEngine } from './FluidMoneyEngine';
 
-const prisma = new PrismaClient();
-
 export interface ForecastPoint {
-  date: Date;
-  openingBalance: Decimal;
-  expectedIncome: Decimal;
+  date:             Date;
+  openingBalance:   Decimal;
+  expectedIncome:   Decimal;
   expectedExpenses: Decimal;
-  plannedPurchases: Decimal; // Goal fulfillments
-  closingBalance: Decimal;
+  plannedPurchases: Decimal;
+  closingBalance:   Decimal;
 }
 
 export class ForecastEngine {
   /**
-   * Generates a date-aware forecasted balance array over a specified range.
+   * Calculates future occurrences for a recurring transaction within [rangeStart, rangeEnd].
    */
-  static async generateForecast(userId: string, daysToForecast: number = 90): Promise<ForecastPoint[]> {
+  private static getOccurrencesInRange(
+    txn: RecurringTransaction,
+    rangeStart: Date,
+    rangeEnd: Date
+  ): Date[] {
+    const occurrences: Date[] = [];
+    let current = startOfDay(new Date(txn.nextOccurrence));
+    const finalEnd = txn.endDate ? startOfDay(new Date(txn.endDate)) : rangeEnd;
+    const effectiveEnd = finalEnd < rangeEnd ? finalEnd : rangeEnd;
+
+    if (txn.frequency === 'ONE_TIME') {
+      if (current >= rangeStart && current <= effectiveEnd) {
+        occurrences.push(current);
+      }
+      return occurrences;
+    }
+
+    // Advance until reaching rangeStart
+    while (current < rangeStart) {
+      current = ForecastEngine.advanceDate(current, txn.frequency);
+    }
+
+    // Collect all occurrences within range
+    while (current <= effectiveEnd) {
+      occurrences.push(new Date(current));
+      const next = ForecastEngine.advanceDate(current, txn.frequency);
+      if (next <= current) break; // Prevent infinite loop
+      current = next;
+    }
+
+    return occurrences;
+  }
+
+  private static advanceDate(d: Date, frequency: string): Date {
+    const next = new Date(d);
+    switch (frequency) {
+      case 'WEEKLY':
+        next.setDate(next.getDate() + 7);
+        break;
+      case 'BIWEEKLY':
+        next.setDate(next.getDate() + 14);
+        break;
+      case 'MONTHLY':
+        next.setMonth(next.getMonth() + 1);
+        break;
+      case 'QUARTERLY':
+        next.setMonth(next.getMonth() + 3);
+        break;
+      case 'YEARLY':
+        next.setFullYear(next.getFullYear() + 1);
+        break;
+      default:
+        next.setMonth(next.getMonth() + 1);
+        break;
+    }
+    return next;
+  }
+
+  /**
+   * Generates a day-by-day forecasted balance array over a specified range.
+   * Accurately projects recurring income/expenses forward based on recurrence schedules.
+   */
+  static async generateForecast(userId: string, daysToForecast = 90): Promise<ForecastPoint[]> {
     const today = startOfDay(new Date());
+    const rangeEnd = addDays(today, daysToForecast);
     const forecast: ForecastPoint[] = [];
-    
-    // 1. Get current baseline (Net Position)
-    // For forecasting, we use Total Assets - Total Liabilities as the starting balance
+
+    // 1. Current liquid balance position (Assets - Liabilities)
     const currentStatus = await FluidMoneyEngine.calculate(userId);
     let runningBalance = currentStatus.totalAssets.minus(currentStatus.totalLiabilities);
 
-    // 2. Fetch future recurring transactions
+    // 2. Fetch recurring transactions
     const recurringTxns = await prisma.recurringTransaction.findMany({
       where: {
         userId,
-        nextOccurrence: { gte: today },
-        OR: [ { endDate: null }, { endDate: { gte: today } } ]
-      }
+        OR: [{ endDate: null }, { endDate: { gte: today } }],
+      },
     });
 
-    // 3. Fetch goals with target dates (Planned Purchases)
+    // 3. Pre-map recurring transactions to dates
+    const dailyTxnsMap = new Map<string, { income: Decimal; expense: Decimal }>();
+
+    recurringTxns.forEach(txn => {
+      const dates = ForecastEngine.getOccurrencesInRange(txn, today, rangeEnd);
+      const amount = new Decimal(txn.amount.toString());
+
+      dates.forEach(occDate => {
+        const key = occDate.toISOString().slice(0, 10);
+        if (!dailyTxnsMap.has(key)) {
+          dailyTxnsMap.set(key, { income: new Decimal(0), expense: new Decimal(0) });
+        }
+        const bucket = dailyTxnsMap.get(key)!;
+        if (txn.type === 'INCOME') {
+          bucket.income = bucket.income.plus(amount);
+        } else if (txn.type === 'EXPENSE') {
+          bucket.expense = bucket.expense.plus(amount);
+        }
+      });
+    });
+
+    // 4. Fetch goals with target dates (planned purchases)
     const plannedGoals = await prisma.goal.findMany({
       where: {
         userId,
         status: 'ACTIVE',
-        targetDate: { gte: today }
+        targetDate: { gte: today, lte: rangeEnd },
+      },
+    });
+
+    const goalsMap = new Map<string, Decimal>();
+    plannedGoals.forEach(goal => {
+      if (goal.targetDate) {
+        const key = startOfDay(new Date(goal.targetDate)).toISOString().slice(0, 10);
+        const amount = new Decimal(goal.targetAmount.toString());
+        goalsMap.set(key, (goalsMap.get(key) || new Decimal(0)).plus(amount));
       }
     });
 
-    // 4. Simulate day-by-day
+    // 5. Day-by-day simulation
     for (let i = 0; i < daysToForecast; i++) {
       const currentDate = addDays(today, i);
-      
-      let dailyIncome = new Decimal(0);
-      let dailyExpenses = new Decimal(0);
-      let dailyPlannedPurchases = new Decimal(0);
+      const key = currentDate.toISOString().slice(0, 10);
+
+      const recurringData = dailyTxnsMap.get(key) || {
+        income: new Decimal(0),
+        expense: new Decimal(0),
+      };
+      const dailyPlannedPurchases = goalsMap.get(key) || new Decimal(0);
 
       const openingBalance = new Decimal(runningBalance);
-
-      // Simulate recurring transactions matching this date
-      // Note: A robust implementation would project recurring dates mathematically
-      // based on frequency (Weekly, Monthly) if 'nextOccurrence' requires looping.
-      recurringTxns.forEach(txn => {
-        // Simplified check: Does this transaction trigger today?
-        // In full production, we calculate occurrences based on frequency enum.
-        if (isSameDay(txn.nextOccurrence, currentDate)) {
-          const amount = new Decimal(txn.amount.toString());
-          if (txn.type === 'INCOME') dailyIncome = dailyIncome.plus(amount);
-          if (txn.type === 'EXPENSE') dailyExpenses = dailyExpenses.plus(amount);
-        }
-      });
-
-      // Simulate planned goal purchases
-      plannedGoals.forEach(goal => {
-        if (goal.targetDate && isSameDay(goal.targetDate, currentDate)) {
-          // If the item is fully bought, we subtract the target price
-          dailyPlannedPurchases = dailyPlannedPurchases.plus(new Decimal(goal.targetAmount.toString()));
-        }
-      });
-
-      // Calculate Closing Balance
       const closingBalance = openingBalance
-        .plus(dailyIncome)
-        .minus(dailyExpenses)
+        .plus(recurringData.income)
+        .minus(recurringData.expense)
         .minus(dailyPlannedPurchases);
 
       forecast.push({
-        date: currentDate,
+        date:             currentDate,
         openingBalance,
-        expectedIncome: dailyIncome,
-        expectedExpenses: dailyExpenses,
+        expectedIncome:   recurringData.income,
+        expectedExpenses: recurringData.expense,
         plannedPurchases: dailyPlannedPurchases,
-        closingBalance
+        closingBalance,
       });
 
-      // Carry over to next day
       runningBalance = closingBalance;
     }
 

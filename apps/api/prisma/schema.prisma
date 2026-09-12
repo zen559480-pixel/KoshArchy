@@ -8,24 +8,24 @@ datasource db {
 }
 
 model User {
-  id            String   @id @default(uuid())
-  email         String   @unique
-  passwordHash  String
-  name          String?
-  currency      String   @default("INR")
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  currency     String   @default("INR")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  accounts      Account[]
-  transactions  Transaction[]
-  categories    Category[]
-  goals         Goal[]
-  budgets       Budget[]
-  recurring     RecurringTransaction[]
+  accounts     Account[]
+  transactions Transaction[]
+  categories   Category[]
+  goals        Goal[]
+  budgets      Budget[]
+  recurring    RecurringTransaction[]
 }
 
 model Account {
-  id                String   @id @default(uuid())
+  id                String      @id @default(uuid())
   userId            String
   name              String
   type              AccountType // BANK, CREDIT_CARD, CASH, WALLET, INVESTMENT
@@ -37,117 +37,177 @@ model Account {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
 
-  user              User          @relation(fields: [userId], references: [id])
-  transactions      Transaction[] @relation("AccountTransactions")
-  transfersFrom     Transaction[] @relation("TransferFrom")
-  transfersTo       Transaction[] @relation("TransferTo")
-  goals             Goal[]        @relation("GoalAccount") // Where goal funds are held
+  user                  User                   @relation(fields: [userId], references: [id])
+  transactions          Transaction[]          @relation("AccountTransactions")
+  transfersFrom         Transaction[]          @relation("TransferFrom")
+  transfersTo           Transaction[]          @relation("TransferTo")
+  goals                 Goal[]                 @relation("GoalAccount") // Where goal funds are held
+  recurringTransactions RecurringTransaction[] @relation("RecurringAccount")
 }
+
 
 model Category {
-  id          String       @id @default(uuid())
-  userId      String
-  name        String
-  type        CategoryType // INCOME, EXPENSE
-  isArchived  Boolean      @default(false)
-  
-  user        User          @relation(fields: [userId], references: [id])
-  transactions Transaction[]
-  budgetItems BudgetItem[]
+  id         String       @id @default(uuid())
+  userId     String
+  name       String
+  type       CategoryType // INCOME, EXPENSE
+  color      String? // Hex color for UI badges and charts, e.g. "#EF4444"
+  icon       String? // Optional emoji or icon name
+  isArchived Boolean      @default(false)
+
+  user                  User                   @relation(fields: [userId], references: [id])
+  transactions          Transaction[]
+  budgetItems           BudgetItem[]
+  recurringTransactions RecurringTransaction[] @relation("RecurringCategory")
 }
 
+
 model Transaction {
-  id              String          @id @default(uuid())
-  userId          String
-  type            TransactionType // INCOME, EXPENSE, TRANSFER
-  amount          Decimal         @db.Decimal(15, 2)
-  date            DateTime
-  description     String?
-  notes           String?
-  
+  id          String          @id @default(uuid())
+  userId      String
+  type        TransactionType // INCOME, EXPENSE, TRANSFER
+  amount      Decimal         @db.Decimal(15, 2)
+  date        DateTime
+  description String?
+  notes       String?
+
   // For Income & Expense
-  accountId       String?
-  account         Account?        @relation("AccountTransactions", fields: [accountId], references: [id])
-  categoryId      String?
-  category        Category?       @relation(fields: [categoryId], references: [id])
+  accountId  String?
+  account    Account?  @relation("AccountTransactions", fields: [accountId], references: [id])
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
 
   // For Transfers (Prevents double counting)
-  fromAccountId   String?
-  fromAccount     Account?        @relation("TransferFrom", fields: [fromAccountId], references: [id])
-  toAccountId     String?
-  toAccount       Account?        @relation("TransferTo", fields: [toAccountId], references: [id])
+  fromAccountId String?
+  fromAccount   Account? @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccountId   String?
+  toAccount     Account? @relation("TransferTo", fields: [toAccountId], references: [id])
 
   // Optional link to goals (if marked as purchased)
-  goalId          String?
-  goal            Goal?           @relation(fields: [goalId], references: [id])
+  goalId String?
+  goal   Goal?   @relation(fields: [goalId], references: [id])
 
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  // Optional link to recurring schedule
+  recurringTransactionId String?
+  recurringTransaction   RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id])
+
+  // Soft delete flag
+  isDeleted Boolean @default(false)
+
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  User      User     @relation(fields: [userId], references: [id])
 }
 
 model Goal {
-  id              String      @id @default(uuid())
-  userId          String
-  name            String
-  targetAmount    Decimal     @db.Decimal(15, 2)
-  savedAmount     Decimal     @db.Decimal(15, 2) @default(0)
-  targetDate      DateTime?
-  status          GoalStatus  // ACTIVE, ACHIEVED, PURCHASED, CANCELLED
-  priority        Priority    // ESSENTIAL, HIGH, MEDIUM, LOW
-  notes           String?
-  
+  id           String     @id @default(uuid())
+  userId       String
+  name         String
+  targetAmount Decimal    @db.Decimal(15, 2)
+  savedAmount  Decimal    @default(0) @db.Decimal(15, 2)
+  targetDate   DateTime?
+  status       GoalStatus // ACTIVE, ACHIEVED, PURCHASED, CANCELLED
+  priority     Priority // ESSENTIAL, HIGH, MEDIUM, LOW
+  notes        String?
+
   // The account where this money is conceptually "reserved"
-  accountId       String?
-  account         Account?    @relation("GoalAccount", fields: [accountId], references: [id])
+  accountId String?
+  account   Account? @relation("GoalAccount", fields: [accountId], references: [id])
 
-  user            User          @relation(fields: [userId], references: [id])
-  transactions    Transaction[] // Expenses linked to this goal when purchased
+  user         User          @relation(fields: [userId], references: [id])
+  transactions Transaction[] // Expenses linked to this goal when purchased
 
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Budget {
-  id          String       @id @default(uuid())
-  userId      String
-  month       Int          // 1-12
-  year        Int          // e.g., 2026
-  
-  items       BudgetItem[]
-  user        User         @relation(fields: [userId], references: [id])
-  
+  id     String @id @default(uuid())
+  userId String
+  month  Int // 1-12
+  year   Int // e.g., 2026
+
+  items BudgetItem[]
+  user  User         @relation(fields: [userId], references: [id])
+
   @@unique([userId, month, year])
 }
 
 model BudgetItem {
-  id              String   @id @default(uuid())
-  budgetId        String
-  categoryId      String
-  expectedAmount  Decimal  @db.Decimal(15, 2)
-  isFixed         Boolean  @default(false)
-  
-  budget          Budget   @relation(fields: [budgetId], references: [id])
-  category        Category @relation(fields: [categoryId], references: [id])
+  id             String  @id @default(uuid())
+  budgetId       String
+  categoryId     String
+  expectedAmount Decimal @db.Decimal(15, 2)
+  isFixed        Boolean @default(false)
+
+  budget   Budget   @relation(fields: [budgetId], references: [id])
+  category Category @relation(fields: [categoryId], references: [id])
 }
 
 model RecurringTransaction {
-  id              String          @id @default(uuid())
-  userId          String
-  type            TransactionType
-  amount          Decimal         @db.Decimal(15, 2)
-  description     String
-  frequency       Frequency       // WEEKLY, MONTHLY, YEARLY, etc.
-  startDate       DateTime
-  endDate         DateTime?
-  nextOccurrence  DateTime
-  
-  user            User            @relation(fields: [userId], references: [id])
+  id             String          @id @default(uuid())
+  userId         String
+  type           TransactionType
+  amount         Decimal         @db.Decimal(15, 2)
+  description    String
+  frequency      Frequency // WEEKLY, MONTHLY, YEARLY, etc.
+  startDate      DateTime
+  endDate        DateTime?
+  nextOccurrence DateTime
+
+  accountId  String?
+  account    Account?  @relation("RecurringAccount", fields: [accountId], references: [id])
+  categoryId String?
+  category   Category? @relation("RecurringCategory", fields: [categoryId], references: [id])
+
+  transactions Transaction[]
+  user         User          @relation(fields: [userId], references: [id])
 }
 
+
 // --- ENUMS ---
-enum AccountType { BANK, CREDIT_CARD, CASH, WALLET, INVESTMENT, LOAN, OTHER }
-enum TransactionType { INCOME, EXPENSE, TRANSFER }
-enum CategoryType { INCOME, EXPENSE }
-enum GoalStatus { ACTIVE, ACHIEVED, PURCHASED, CANCELLED }
-enum Priority { ESSENTIAL, HIGH, MEDIUM, LOW }
-enum Frequency { ONE_TIME, WEEKLY, BIWEEKLY, MONTHLY, QUARTERLY, YEARLY, CUSTOM }
+enum AccountType {
+  BANK
+  CREDIT_CARD
+  CASH
+  WALLET
+  INVESTMENT
+  LOAN
+  OTHER
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+enum GoalStatus {
+  ACTIVE
+  ACHIEVED
+  PURCHASED
+  CANCELLED
+}
+
+enum Priority {
+  ESSENTIAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum Frequency {
+  ONE_TIME
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
