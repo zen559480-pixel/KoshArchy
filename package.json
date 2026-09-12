@@ -17,5 +17,9 @@
   "workspaces": [
     "apps/api",
     "apps/web"
-  ]
+  ],
+  "dependencies": {
+    "@types/node": "^20.14.2",
+    "typescript": "^5.5.4"
+  }
 }
