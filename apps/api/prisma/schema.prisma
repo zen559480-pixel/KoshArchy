@@ -22,6 +22,7 @@ model User {
   goals        Goal[]
   budgets      Budget[]
   recurring    RecurringTransaction[]
+  snapshots    NetWorthSnapshot[]
 }
 
 model Account {
@@ -210,4 +211,17 @@ enum Frequency {
   QUARTERLY
   YEARLY
   CUSTOM
+}
+
+model NetWorthSnapshot {
+  id           String   @id @default(uuid())
+  userId       String
+  assets       Decimal  @db.Decimal(15, 2)
+  liabilities  Decimal  @db.Decimal(15, 2)
+  netWorth     Decimal  @db.Decimal(15, 2)
+  snapshotDate DateTime
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, snapshotDate])
 }

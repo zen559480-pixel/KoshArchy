@@ -18,6 +18,7 @@ if (missingEnvVars.length > 0) {
 
 const PORT = process.env.PORT || 3001;
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+const allowedOrigins = CLIENT_URL.split(',').map((url) => url.trim());
 
 // ─── Express App Setup ─────────────────────────────────────────
 const app = express();
@@ -26,7 +27,19 @@ app.use(helmet());
 
 app.use(
   cors({
-    origin: [CLIENT_URL, 'http://localhost:5173'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+      if (
+        allowedOrigins.includes(origin) ||
+        allowedOrigins.includes('*') ||
+        origin.startsWith('http://localhost:') ||
+        origin.endsWith('.vercel.app')
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Fallback allow for flexible custom domains
+    },
     credentials: true,
   })
 );
@@ -34,10 +47,27 @@ app.use(
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ─── Health Check ──────────────────────────────────────────────
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+// ─── Health Checks (Render / Uptime Monitoring) ─────────────────
+const handleHealth = async (_req: express.Request, res: express.Response) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({
+      status: 'healthy',
+      app: 'KoshArchy API',
+      database: 'connected',
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    res.status(503).json({
+      status: 'unhealthy',
+      database: 'disconnected',
+      error: error instanceof Error ? error.message : 'DB connection error',
+    });
+  }
+};
+
+app.get('/health', handleHealth);
+app.get('/api/health', handleHealth);
 
 // ─── Routes ───────────────────────────────────────────────────
 app.use('/api/auth', authRouter);

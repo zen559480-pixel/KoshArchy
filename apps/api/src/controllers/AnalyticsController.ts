@@ -70,4 +70,39 @@ export class AnalyticsController {
       res.status(500).json({ error: 'Failed to generate annual summary' });
     }
   }
+
+  static async getNetWorthHistory(req: Request, res: Response) {
+    try {
+      const userId = req.user.id;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 12;
+      const history = await AnalyticsEngine.getNetWorthHistory(userId, limit);
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          history,
+        },
+      });
+    } catch (error) {
+      console.error('AnalyticsController.getNetWorthHistory error:', error);
+      res.status(500).json({ error: 'Failed to retrieve net worth history' });
+    }
+  }
+
+  static async takeNetWorthSnapshot(req: Request, res: Response) {
+    try {
+      const userId = req.user.id;
+      const snapshot = await AnalyticsEngine.recordNetWorthSnapshot(userId);
+
+      res.status(201).json({
+        status: 'success',
+        data: {
+          snapshot,
+        },
+      });
+    } catch (error) {
+      console.error('AnalyticsController.takeNetWorthSnapshot error:', error);
+      res.status(500).json({ error: 'Failed to record net worth snapshot' });
+    }
+  }
 }

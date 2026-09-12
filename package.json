@@ -5,7 +5,14 @@
   "description": "KoshArchy — Personal Finance Manager (monorepo root)",
   "scripts": {
     "dev:api": "npm run dev --workspace=apps/api",
-    "dev:web": "npm run dev --workspace=apps/web"
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build:api": "npm run build --workspace=apps/api",
+    "build:web": "npm run build --workspace=apps/web",
+    "build": "npm run build --workspace=apps/api && npm run build --workspace=apps/web",
+    "start:api": "npm run start --workspace=apps/api",
+    "db:push": "npm run prisma:push --workspace=apps/api",
+    "db:generate": "npm run prisma:generate --workspace=apps/api",
+    "e2e:simulation": "npm run e2e:simulation --workspace=apps/api"
   },
   "workspaces": [
     "apps/api",

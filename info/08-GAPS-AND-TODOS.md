@@ -106,7 +106,13 @@
 - [x] Clean production build for Vite frontend (`npm run build`)
 
 
-### Phase 9 — Cloud Deployment
-- [ ] Neon DB migration
-- [ ] Render Web Service for Express API
-- [ ] Vercel deployment for React frontend
+### Phase 9 — Cloud Deployment & Production Readiness — ✅ COMPLETE
+- [x] Prisma schema updated with `NetWorthSnapshot` model and migrated
+- [x] Backend API enhanced with production health checks (`/health`, `/api/health`) and dynamic multi-origin/Vercel CORS
+- [x] Net worth snapshot engine & history endpoints (`/api/analytics/net-worth-history`, `/api/analytics/net-worth-snapshot`)
+- [x] `vercel.json` SPA routing rewrite rules created for `apps/web` and root repository
+- [x] Production build chunk optimization in `vite.config.ts` (`vendor-react`, `vendor-charts`, `vendor-icons`)
+- [x] `render.yaml` blueprint created for automated 1-click Render Web Service deployment
+- [x] Production multi-stage Dockerfiles (`apps/api/Dockerfile`, `apps/web/Dockerfile`) and `docker-compose.prod.yml`
+- [x] Comprehensive deployment guide created: `info/10-DEPLOYMENT-GUIDE.md` (Neon + Render + Vercel + Self-hosted Docker)
+

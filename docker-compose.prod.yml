@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: kosharchy-prod-db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-kosharchy}
+    ports:
+      - '5432:5432'
+    volumes:
+      - kosharchy_prod_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-kosharchy}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: kosharchy-prod-api
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - '3001:3001'
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-kosharchy}?schema=public
+      JWT_SECRET: ${JWT_SECRET:-kosharchy-super-secret-jwt-key-production-ready}
+      JWT_EXPIRES_IN: 30d
+      PORT: 3001
+      CLIENT_URL: ${CLIENT_URL:-http://localhost}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@kosharchy.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-changeme123}
+      ADMIN_NAME: ${ADMIN_NAME:-Admin}
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: kosharchy-prod-web
+    restart: always
+    depends_on:
+      - api
+    ports:
+      - '80:80'
+
+volumes:
+  kosharchy_prod_data:

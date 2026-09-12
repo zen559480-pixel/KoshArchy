@@ -81,6 +81,14 @@ router.get(
   validate(annualQuerySchema),
   AnalyticsController.getAnnual
 );
+router.get(
+  '/analytics/net-worth-history',
+  AnalyticsController.getNetWorthHistory
+);
+router.post(
+  '/analytics/net-worth-snapshot',
+  AnalyticsController.takeNetWorthSnapshot
+);
 
 
 // ── Accounts ──────────────────────────────────────────────────

@@ -325,4 +325,65 @@ export class AnalyticsEngine {
       expenses: t.expenses,
     }));
   }
+
+  /**
+   * Take and record a net worth snapshot for user
+   */
+  static async recordNetWorthSnapshot(userId: string, date: Date = new Date()) {
+    const accounts = await prisma.account.findMany({
+      where: { userId, isActive: true, includeInNetWorth: true },
+    });
+
+    let assets = new Decimal(0);
+    let liabilities = new Decimal(0);
+
+    for (const acc of accounts) {
+      const bal = new Decimal(acc.balance.toString());
+      if (bal.greaterThanOrEqualTo(0)) {
+        assets = assets.plus(bal);
+      } else {
+        liabilities = liabilities.plus(bal.abs());
+      }
+    }
+
+    const netWorth = assets.minus(liabilities);
+
+    const snapshot = await prisma.netWorthSnapshot.create({
+      data: {
+        userId,
+        assets,
+        liabilities,
+        netWorth,
+        snapshotDate: date,
+      },
+    });
+
+    return {
+      id: snapshot.id,
+      snapshotDate: snapshot.snapshotDate.toISOString(),
+      assets: snapshot.assets.toNumber(),
+      liabilities: snapshot.liabilities.toNumber(),
+      netWorth: snapshot.netWorth.toNumber(),
+    };
+  }
+
+  /**
+   * Retrieve historical net worth snapshots
+   */
+  static async getNetWorthHistory(userId: string, limit: number = 12) {
+    const snapshots = await prisma.netWorthSnapshot.findMany({
+      where: { userId },
+      orderBy: { snapshotDate: 'asc' },
+      take: limit,
+    });
+
+    return snapshots.map((s) => ({
+      id: s.id,
+      snapshotDate: s.snapshotDate.toISOString(),
+      assets: new Decimal(s.assets.toString()).toNumber(),
+      liabilities: new Decimal(s.liabilities.toString()).toNumber(),
+      netWorth: new Decimal(s.netWorth.toString()).toNumber(),
+    }));
+  }
 }
+
